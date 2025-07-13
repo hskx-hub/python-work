@@ -12,7 +12,6 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 import re
 from sklearn.preprocessing import PolynomialFeatures
-from sklearn.metrics import mean_squared_error
 
 plt.rcParams['font.sans-serif'] = ['SimHei']  # 中文字体
 plt.rcParams['axes.unicode_minus'] = False   # 负号正常显示
@@ -75,49 +74,39 @@ def fetch_dlt_before_july1(limit=200, save_path="dlt_before_july1.csv"):
         print(f"❌ 抓取大乐透数据出错：{e}")
         return None
 
-
 def analyze_and_visualize(df):
     print("\n📊 开始分析大乐透数据...")
-
     df = df.sort_values("开奖日期")
-    df["期数"] = np.arange(len(df))
-    X = df[["期数"]]
-    y = df["总投注额(元)"]
-
-    from statsmodels.tsa.holtwinters import ExponentialSmoothing
-
-    # ========== 使用指数平滑进行预测 ==========
-    df = df.sort_values("开奖日期")
-    df["期数"] = np.arange(len(df))
-    y = df["总投注额(元)"]
-
-    # 拟合指数平滑模型
-    model = ExponentialSmoothing(y, trend="add", seasonal=None)
-    fit = model.fit()
-
-    # 预测下一期
-    next_index = df["期数"].max() + 1
-    predicted_sales = fit.forecast(1).iloc[0]
-
-    # 构造趋势线
-    trend_y = fit.fittedvalues
-    trend_x = df["开奖日期"]
-
-    print(f"✅ 使用指数平滑法进行预测")
-    print(f"🔮 预测下一期总销售额：{int(predicted_sales)} 元")
-
     plt.figure(figsize=(10, 6))
-    plt.plot(df["开奖日期"], y, marker='o', linestyle='-', label='历史销售额')
-    plt.plot(trend_x, trend_y, color='red', linestyle='--', label='指数平滑趋势')
-    plt.title("大乐透总销售额趋势图（指数平滑）")
+    plt.plot(df["开奖日期"], df["总投注额(元)"], marker='o')
+    plt.title("大乐透总销售额随开奖日期变化")
     plt.xlabel("开奖日期")
     plt.ylabel("总销售额")
     plt.xticks(rotation=45)
-    plt.legend()
     plt.tight_layout()
     plt.show()
 
-    # ========== 号码频率统计可视化保持原样 ==========
+    # 添加期数列
+    df["期数"] = np.arange(len(df))
+
+    # 设置特征和目标
+    X = df[["期数"]]
+    y = df["总投注额(元)"]
+
+    # 生成多项式特征（如 2 次或 3 次）
+    poly = PolynomialFeatures(degree=2, include_bias=False)  # 二次多项式
+    X_poly = poly.fit_transform(X)
+
+    # 拟合多项式回归模型
+    model = LinearRegression().fit(X_poly, y)
+
+    # 预测下一期的期数
+    next_period = np.array([[df["期数"].max() + 1]])
+    next_period_poly = poly.transform(next_period)
+    predicted_sales = model.predict(next_period_poly)
+
+    print(f"🔮 [多项式回归] 预测下一期总销售额：{int(predicted_sales[0])} 元")
+
     front_numbers = []
     back_numbers = []
     for _, row in df.iterrows():
@@ -143,7 +132,6 @@ def analyze_and_visualize(df):
     front_recommend = [num for num, _ in front_counts.most_common(5)]
     back_recommend = [num for num, _ in back_counts.most_common(2)]
     print(f"🎯 推荐投注号码：前区 {front_recommend}，后区 {back_recommend}")
-
 
 def analyze_draw_days(df):
     print("\n📅 分析开奖日模式...")
